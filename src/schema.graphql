@@ -1,0 +1,102 @@
+﻿schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}
+
+type Mutation {
+  createTasks(input: CreateTasksInput!): Tasks
+  deleteTasks(condition: TableTasksConditionInput, input: DeleteTasksInput!): Tasks
+  updateTasks(condition: TableTasksConditionInput, input: UpdateTasksInput!): Tasks
+}
+
+type Query {
+  getTasks(id: String!): Tasks
+  listTasks(filter: TableTasksFilterInput, limit: Int, nextToken: String, orderBy: [OrderByTasksInput]): TasksConnection
+}
+
+type Subscription {
+  onCreateTasks(description: String, id: String, name: String): Tasks @aws_subscribe(mutations : ["createTasks"])
+  onDeleteTasks(description: String, id: String, name: String): Tasks @aws_subscribe(mutations : ["deleteTasks"])
+  onUpdateTasks(description: String, id: String, name: String): Tasks @aws_subscribe(mutations : ["updateTasks"])
+}
+
+type Tasks {
+  description: String
+  id: String!
+  name: String
+}
+
+type TasksConnection {
+  items: [Tasks]
+  nextToken: String
+}
+
+enum ModelSortDirection {
+  ASC
+  DESC
+}
+
+input CreateTasksInput {
+  description: String
+  id: String
+  name: String
+}
+
+input DeleteTasksInput {
+  id: String!
+}
+
+input ModelSizeInput {
+  between: [Int]
+  eq: Int
+  ge: Int
+  gt: Int
+  le: Int
+  lt: Int
+  ne: Int
+}
+
+input OrderByTasksInput {
+  description: ModelSortDirection
+  id: ModelSortDirection
+  name: ModelSortDirection
+}
+
+input TableStringFilterInput {
+  attributeExists: Boolean
+  beginsWith: String
+  between: [String]
+  contains: String
+  eq: String
+  ge: String
+  gt: String
+  le: String
+  lt: String
+  ne: String
+  notContains: String
+  size: ModelSizeInput
+}
+
+input TableTasksConditionInput {
+  and: [TableTasksConditionInput]
+  description: TableStringFilterInput
+  name: TableStringFilterInput
+  not: [TableTasksConditionInput]
+  or: [TableTasksConditionInput]
+}
+
+input TableTasksFilterInput {
+  and: [TableTasksFilterInput]
+  description: TableStringFilterInput
+  id: TableStringFilterInput
+  name: TableStringFilterInput
+  not: [TableTasksFilterInput]
+  or: [TableTasksFilterInput]
+}
+
+input UpdateTasksInput {
+  description: String
+  id: String!
+  name: String
+}

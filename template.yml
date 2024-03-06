@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  SAM Template
+
+Resources:
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Aurora DB subnet group
+      SubnetIds:
+        - <MY_SUBNET_1>
+        - <MY_SUBNET_2>
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Aurora DB SG
+      GroupDescription: Ingress rules for Aurora DB
+      VpcId: <MY_VPC>
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 0.0.0.0/0
+
+  DBCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Delete
+    Properties:
+      DatabaseName: mydatabase
+      DBClusterIdentifier: my-dbcluster
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      Engine: aurora-postgresql
+      EngineVersion: 15.4
+      MasterUsername: <MY_USER>
+      ManageMasterUserPassword: True
+      Port: 5432
+      EnableHttpEndpoint: true
+      ServerlessV2ScalingConfiguration:
+        MaxCapacity: 1.0
+        MinCapacity: 0.5
+      VpcSecurityGroupIds:
+        - !Ref DBSecurityGroup
+
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBClusterIdentifier: !Ref DBCluster
+      DBInstanceIdentifier: my-dbinstance
+      DBInstanceClass: db.serverless
+      Engine: aurora-postgresql
+
+  AppSyncAPI:
+    Type: AWS::AppSync::GraphQLApi
+    Properties:
+      Name: my-appsyncapi
+      AuthenticationType: API_KEY
+
+  AppSyncApiKey:
+    Type: AWS::AppSync::ApiKey
+    Properties:
+      ApiId: !GetAtt AppSyncAPI.ApiId
+
+  AppSyncSchema:
+    Type: AWS::AppSync::GraphQLSchema
+    Properties:
+      ApiId: !GetAtt AppSyncAPI.ApiId
+      DefinitionS3Location: ./src/schema.graphql
+
+  AppSyncDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt AppSyncAPI.ApiId
+      Name: RDSDataSource
+      Type: RELATIONAL_DATABASE
+      ServiceRoleArn: !GetAtt AppSyncDataSourceRole.Arn
+      RelationalDatabaseConfig:
+        RelationalDatabaseSourceType: RDS_HTTP_ENDPOINT
+        RdsHttpEndpointConfig:
+          DatabaseName: mydatabase
+          AwsRegion: !Ref AWS::Region
+          DbClusterIdentifier: !GetAtt DBCluster.DBClusterArn
+          AwsSecretStoreArn: !GetAtt DBCluster.MasterUserSecret.SecretArn
+
+  AppSyncDataSourceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: appsync.amazonaws.com
+      Policies:
+        - PolicyName: DataSourceRDSPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds-data:BatchExecuteStatement
+                  - rds-data:BeginTransaction
+                  - rds-data:CommitTransaction   
+                  - rds-data:RollbackTransaction
+                  - rds-data:ExecuteStatement
+                Resource: 
+                  - !GetAtt DBCluster.DBClusterArn
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: 
+                  - !GetAtt DBCluster.MasterUserSecret.SecretArn
+
+  ListTasksResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt AppSyncAPI.ApiId
+      CodeS3Location: ./src/listTasks.js
+      FieldName: listTasks
+      TypeName: Query
+      DataSourceName: !GetAtt AppSyncDataSource.Name
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+
+  GetTasksResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt AppSyncAPI.ApiId
+      CodeS3Location: ./src/getTasks.js
+      FieldName: getTasks
+      TypeName: Query
+      DataSourceName: !GetAtt AppSyncDataSource.Name
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+
+  CreateTasksResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt AppSyncAPI.ApiId
+      CodeS3Location: ./src/createTasks.js
+      FieldName: createTasks
+      TypeName: Mutation
+      DataSourceName: !GetAtt AppSyncDataSource.Name
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+
+  UpdateTasksResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt AppSyncAPI.ApiId
+      CodeS3Location: ./src/updateTasks.js
+      FieldName: updateTasks
+      TypeName: Mutation
+      DataSourceName: !GetAtt AppSyncDataSource.Name
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+
+  DeleteTasksResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt AppSyncAPI.ApiId
+      CodeS3Location: ./src/deleteTasks.js
+      FieldName: deleteTasks
+      TypeName: Mutation
+      DataSourceName: !GetAtt AppSyncDataSource.Name
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+
+Outputs:
+  DBSecret:
+    Description: Secret arn
+    Value: !GetAtt DBCluster.MasterUserSecret.SecretArn
+  DBCluster:
+    Description: Cluster arn
+    Value: !GetAtt DBCluster.DBClusterArn
